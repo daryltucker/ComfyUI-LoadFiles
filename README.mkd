@@ -23,7 +23,7 @@ The primary goal of these nodes are to provide a way to access files generated b
 ### General Outputs
 
 1. filenames (STRING)
-  * Newline delimited list of files selected
+   * Newline delimited list of files selected
 
 
 ## ListFilenames
