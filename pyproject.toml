@@ -9,6 +9,6 @@ Repository = "https://github.com/daryltucker/ComfyUI-LoadFiles"
 #  Used by Comfy Registry https://comfyregistry.org
 
 [tool.comfy]
-PublisherId = ""
+PublisherId = "daryltucker"
 DisplayName = "ComfyUI-LoadFiles"
 Icon = ""
