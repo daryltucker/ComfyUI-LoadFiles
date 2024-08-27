@@ -9,9 +9,7 @@ import re
 
 import node_helpers
 import numpy as np
-import safetensors.torch
 
-from pathlib import Path
 from PIL import Image, ImageSequence, ImageOps
 
 
@@ -24,197 +22,197 @@ GENERIC_INPUT_TYPES = {
     "limiter": ("STRING", {"multiline": False, "default": ".*.png"},),
     "sort": (["Name", "Date Created", "Date Modified", "Size"],),
     "direction": (["Acending", "Decending"],),
+    "splice": (['Tail', 'Head'],),
     "count": ("INT", {"default": 1, "min": 1},),
     "error": (["No Error", "Load Count"],),
   }
 }
 
 
-
 def filterFn(option):
-  filter_key = os.path.basename
-  match option:
-    case 'Name':
-      filter_key = os.path.basename
-    case 'Date Created':
-      filter_key = os.path.getctime
-    case 'Date Modified':
-      filter_key = os.path.getmtime
-    case 'Size':
-      filter_key = os.path.getsize
+    filter_key = os.path.basename
+    match option:
+        case 'Name':
+            filter_key = os.path.basename
+        case 'Date Created':
+            filter_key = os.path.getctime
+        case 'Date Modified':
+            filter_key = os.path.getmtime
+        case 'Size':
+            filter_key = os.path.getsize
 
-  return filter_key
+    return filter_key
 
 
 def limiterFn(file, directory, limiter):
-  fullpath = f"{directory}{file}"
-  results = False
-  try:
-    results = (os.path.isfile(fullpath) and re.search(limiter, file))
-  except re.error as e:
-    raise Exception("Double-check your regex. EXAMPLE Valid: '.*' Invalid: '*.*'")
-    print(e)
-  return results
+    fullpath = f"{directory}{file}"
+    results = False
+    try:
+        results = (os.path.isfile(fullpath) and re.search(limiter, file))
+    except re.error as e:
+        raise Exception("LoadFiles: Double-check your regex. EXAMPLE Valid: '.*' Invalid: '*.*'")
+        print(e)
+    return results
 
 
 def countCheck(files, count, error):
-  # Determine if Count has been met
-  if len(files) < count:
-    msg = f"LoadFiles: The directory has fewer than {count} files."
-    if error == "Load Count":
-      raise Exception(msg)
-    else:
-      print(msg)
+    # Determine if Count has been met
+    if len(files) < count:
+        msg = f"LoadFiles: The directory has fewer than {count} files."
+        if error == "Load Count":
+            raise Exception(msg)
+        else:
+            print(msg)
 
-      # Fill Files List to fulfil Count request.
-      if len(files) > 0:
-        diff = count - len(files)
-        for i in range(0, diff):
-          files.append(files[i])
+        # Fill Files List to fulfil Count request.
+        if len(files) > 0:
+            diff = count - len(files)
+            for i in range(0, diff):
+                files.append(files[i])
 
-  return files
+    return files
+
+
+def spliceFiles(files, count, splice):
+    files_txt = ''
+    if files:
+        if splice == "Head":
+            files = files[:count]
+        else:
+            files = files[-count:]
+        files_txt = '\n'.join(files)
+
+    return (files, files_txt)
 
 
 # LoadImages #################################################################
 
 class LoadImages:
 
-  @classmethod
-  def INPUT_TYPES(cls):
-    return GENERIC_INPUT_TYPES
+    @classmethod
+    def INPUT_TYPES(cls):
+        return GENERIC_INPUT_TYPES
 
-  RETURN_TYPES = ("IMAGE", "MASK", "STRING",)
-  FUNCTION = "listFiles"
-  CATEGORY = category
+    RETURN_TYPES = ("IMAGE", "MASK", "STRING",)
+    FUNCTION = "listFiles"
+    CATEGORY = category
 
+    def listFiles(self, directory, limiter, sort, direction, splice, count, error):
+        count = int(count)
 
-  def listFiles(self, directory, limiter, sort, direction, count, error):
-    count = int(count)
+        if directory[-1:] != '/':
+            directory = f"{directory}/"
+        if not os.path.isdir(directory):
+            raise Exception(f"LoadFiles: The path is not a valid directory: {directory}")
 
-    if directory[-1:] != '/':
-      directory = f"{directory}/"
-    if not os.path.isdir(directory):
-      raise Exception(f"LoadFiles: The path is not a valid directory: {directory}")
+        filter_key = filterFn(sort)
 
-    filter_key = filterFn(sort)
+        files = sorted(
+            filter(
+                lambda file: limiterFn(file, directory, limiter),
+                os.listdir(directory)
+            ),
+            reverse=True if direction == "Decending" else False,
+            key=lambda file: filter_key(f"{directory}{file}")
+        )
 
-    files = sorted(
-      filter(
-        lambda file: limiterFn(file, directory, limiter),
-        os.listdir(directory)
-      ),
-      reverse=True if direction == "Decending" else False,
-      key=lambda file: filter_key(f"{directory}{file}")
-    )
+        # Determine if Count has been met
+        files = countCheck(files, count, error)
+        # Splice Files
+        files, files_txt = spliceFiles(files, count, splice)
 
+        # Process Images to gen Masks
+        output_images = []
+        output_masks = []
+        w, h = None, None
 
-    # Determine if Count has been met
-    files = countCheck(files, count, error)
+        for filename in files:
+            filename = f"{directory}{filename}"
+            img = node_helpers.pillow(Image.open, filename)
 
-    files_txt = ''
-    if files:
-      files = files[-count:]
-      files_txt = '\n'.join(files)
+            excluded_formats = ['MPO']
 
-    # Process Images to gen Masks
-    output_images = []
-    output_masks = []
-    w, h = None, None
+            for i in ImageSequence.Iterator(img):
+                i = node_helpers.pillow(ImageOps.exif_transpose, i)
 
-    for filename in files:
-      filename = f"{directory}{filename}"
-      img = node_helpers.pillow(Image.open, filename)
+                if i.mode == 'I':
+                    i = i.point(lambda i: i * (1 / 255))
+                image = i.convert("RGB")
 
-      excluded_formats = ['MPO']
+                if len(output_images) == 0:
+                    w = image.size[0]
+                    h = image.size[1]
 
-      for i in ImageSequence.Iterator(img):
-          i = node_helpers.pillow(ImageOps.exif_transpose, i)
+                if image.size[0] != w or image.size[1] != h:
+                    continue
 
-          if i.mode == 'I':
-              i = i.point(lambda i: i * (1 / 255))
-          image = i.convert("RGB")
+                image = np.array(image).astype(np.float32) / 255.0
+                image = torch.from_numpy(image)[None,]
+                if 'A' in i.getbands():
+                    mask = np.array(i.getchannel('A')).astype(np.float32) / 255.0
+                    mask = 1. - torch.from_numpy(mask)
+                else:
+                    mask = torch.zeros((64,64), dtype=torch.float32, device="cpu")
 
-          if len(output_images) == 0:
-              w = image.size[0]
-              h = image.size[1]
+                output_images.append(image)
+                output_masks.append(mask.unsqueeze(0))
 
-          if image.size[0] != w or image.size[1] != h:
-              continue
+        if len(output_images) > 1 and img.format not in excluded_formats:
+            output_image = torch.cat(output_images, dim=0)
+            output_mask = torch.cat(output_masks, dim=0)
+        else:
+            output_image = output_images[0]
+            output_mask = output_masks[0]
 
-          image = np.array(image).astype(np.float32) / 255.0
-          image = torch.from_numpy(image)[None,]
-          if 'A' in i.getbands():
-              mask = np.array(i.getchannel('A')).astype(np.float32) / 255.0
-              mask = 1. - torch.from_numpy(mask)
-          else:
-              mask = torch.zeros((64,64), dtype=torch.float32, device="cpu")
+        return (output_image, output_mask, files_txt)
 
-          output_images.append(image)
-          output_masks.append(mask.unsqueeze(0))
-
-    if len(output_images) > 1 and img.format not in excluded_formats:
-      output_image = torch.cat(output_images, dim=0)
-      output_mask = torch.cat(output_masks, dim=0)
-    else:
-      output_image = output_images[0]
-      output_mask = output_masks[0]
-
-    return(output_image, output_mask, files_txt)
-
-
-  @classmethod
-  def IS_CHANGED(s, **kwargs):
-    # Always refresh files
-    return time.time()
-
+    @classmethod
+    def IS_CHANGED(s, **kwargs):
+        # Always refresh files
+        return time.time()
 
 
 # ListFilenames ##############################################################
 class ListFilenames:
 
-  @classmethod
-  def INPUT_TYPES(cls):
-    return GENERIC_INPUT_TYPES
+    @classmethod
+    def INPUT_TYPES(cls):
+        return GENERIC_INPUT_TYPES
 
-  RETURN_TYPES = ("STRING",)
-  FUNCTION = "listFiles"
-  CATEGORY = category
+    RETURN_TYPES = ("STRING",)
+    FUNCTION = "listFiles"
+    CATEGORY = category
 
+    def listFiles(self, directory, limiter, sort, direction, splice, count, error):
+        count = int(count)
 
-  def listFiles(self, directory, limiter, sort, direction, count, error):
-    count = int(count)
+        if directory[-1:] != '/':
+            directory = f"{directory}/"
+        if not os.path.isdir(directory):
+            raise Exception(f"LoadFiles: The path is not a valid directory: {directory}")
 
-    if directory[-1:] != '/':
-      directory = f"{directory}/"
-    if not os.path.isdir(directory):
-      raise Exception(f"LoadFiles: The path is not a valid directory: {directory}")
+        filter_key = filterFn(sort)
 
-    filter_key = filterFn(sort)
+        files = sorted(
+            filter(
+                lambda file: limiterFn(file, directory, limiter),
+                os.listdir(directory)
+            ),
+            reverse=True if direction == "Decending" else False,
+            key=lambda file: filter_key(f"{directory}{file}")
+        )
 
-    files = sorted(
-      filter(
-        lambda file: limiterFn(file, directory, limiter),
-        os.listdir(directory)
-      ),
-      reverse=True if direction == "Decending" else False,
-      key=lambda file: filter_key(f"{directory}{file}")
-    )
+        # Determine if Count has been met
+        files = countCheck(files, count, error)
+        # Splice Files
+        files, files_txt = spliceFiles(files, count, splice)
 
+        return (files_txt,)
 
-    # Determine if Count has been met
-    files = countCheck(files, count, error)
-
-    files_txt = ''
-    if files:
-      files = files[-count:]
-      files_txt = '\n'.join(files)
-
-    return(files_txt,)
-
-  @classmethod
-  def IS_CHANGED(s, **kwargs):
-    # Always refresh files
-    return time.time()
+    @classmethod
+    def IS_CHANGED(s, **kwargs):
+        # Always refresh files
+        return time.time()
 
 
 # ComfyUI Mappings ###########################################################
