@@ -23,7 +23,7 @@ GENERIC_INPUT_TYPES = {
     "sort": (["Name", "Date Created", "Date Modified", "Size"],),
     "direction": (["Acending", "Decending"],),
     "splice": (['Tail', 'Head'],),
-    "count": ("INT", {"default": 1, "min": 1},),
+    "count": ("INT", {"default": 1, "min": 0},),
     "error": (["No Error", "Load Count"],),
   }
 }
@@ -75,12 +75,12 @@ def countCheck(files, count, error):
 
 def spliceFiles(files, count, splice):
     files_txt = ''
-    if files:
+    if files and count:
         if splice == "Head":
             files = files[:count]
         else:
             files = files[-count:]
-        files_txt = '\n'.join(files)
+    files_txt = '\n'.join(files)
 
     return (files, files_txt)
 
