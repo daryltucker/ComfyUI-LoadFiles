@@ -6,6 +6,7 @@ import torch
 import os
 import time
 import re
+import random
 
 import node_helpers
 import numpy as np
@@ -23,6 +24,7 @@ GENERIC_INPUT_TYPES = {
     "sort": (["Name", "Date Created", "Date Modified", "Size"],),
     "direction": (["Acending", "Decending"],),
     "splice": (['Tail', 'Head'],),
+    "skip": ("INT", {"default": 1, "min": 0},),
     "count": ("INT", {"default": 1, "min": 0},),
     "error": (["No Error", "Load Count"],),
   }
@@ -73,13 +75,13 @@ def countCheck(files, count, error):
     return files
 
 
-def spliceFiles(files, count, splice):
+def spliceFiles(files, count, splice, skip):
     files_txt = ''
     if files and count:
         if splice == "Head":
-            files = files[:count]
+            files = files[skip:skip + count]
         else:
-            files = files[-count:]
+            files = files[-1 * count - skip:][:-1 * skip]
     files_txt = '\n'.join(files)
 
     return (files, files_txt)
@@ -215,14 +217,43 @@ class ListFilenames:
         return time.time()
 
 
+# CountLines #################################################################
+class CountLines:
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "STRING": ("STRING", {"forceInput": True})
+            }
+        }
+
+    RETURN_TYPES = ("INT", "FLOAT", "STRING")
+    FUNCTION = "countLines"
+    CATEGORY = category
+
+    def countLines(self, STRING):
+        count = len(re.findall('\r*\n', STRING))
+        if STRING:
+            count = count + 1
+        return (int(count), float(count), str(count),)
+
+    @classmethod
+    def IS_CHANGED(s, **kwargs):
+        # Always refresh files
+        return time.time()
+
+
 # ComfyUI Mappings ###########################################################
 
 NODE_CLASS_MAPPINGS = {
     "LoadImages": LoadImages,
-    "ListFilenames": ListFilenames
+    "ListFilenames": ListFilenames,
+    "CountLines": CountLines
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "LoadImages": "Load Images from Directory",
-    "ListFilenames": "List Files from Directory"
+    "ListFilenames": "List Files in Directory",
+    "CountLines": "Line Count STRING"
 }
