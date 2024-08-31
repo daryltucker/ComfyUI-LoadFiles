@@ -24,8 +24,8 @@ GENERIC_INPUT_TYPES = {
     "sort": (["Name", "Date Created", "Date Modified", "Size"],),
     "direction": (["Acending", "Decending"],),
     "splice": (['Tail', 'Head'],),
-    "skip": ("INT", {"default": 1, "min": 0},),
-    "count": ("INT", {"default": 1, "min": 0},),
+    "skip": ("INT", {"default": 0, "min": 0},),
+    "count": ("INT", {"default": 0, "min": 0},),
     "error": (["No Error", "Load Count"],),
   }
 }
@@ -75,13 +75,13 @@ def countCheck(files, count, error):
     return files
 
 
-def spliceFiles(files, count, splice, skip):
+def spliceFiles(files, splice, skip, count):
     files_txt = ''
     if files and count:
         if splice == "Head":
             files = files[skip:skip + count]
         else:
-            files = files[-1 * count - skip:][:-1 * skip]
+            files = files[:-1 * skip][:count]
     files_txt = '\n'.join(files)
 
     return (files, files_txt)
@@ -99,7 +99,7 @@ class LoadImages:
     FUNCTION = "listFiles"
     CATEGORY = category
 
-    def listFiles(self, directory, limiter, sort, direction, splice, count, error):
+    def listFiles(self, directory, limiter, sort, direction, splice, skip, count, error):
         count = int(count)
 
         if directory[-1:] != '/':
@@ -121,7 +121,7 @@ class LoadImages:
         # Determine if Count has been met
         files = countCheck(files, count, error)
         # Splice Files
-        files, files_txt = spliceFiles(files, count, splice)
+        files, files_txt = spliceFiles(files, splice, skip, count)
 
         # Process Images to gen Masks
         output_images = []
@@ -185,7 +185,7 @@ class ListFilenames:
     FUNCTION = "listFiles"
     CATEGORY = category
 
-    def listFiles(self, directory, limiter, sort, direction, splice, count, error):
+    def listFiles(self, directory, limiter, sort, direction, splice, skip, count, error):
         count = int(count)
 
         if directory[-1:] != '/':
@@ -207,7 +207,7 @@ class ListFilenames:
         # Determine if Count has been met
         files = countCheck(files, count, error)
         # Splice Files
-        files, files_txt = spliceFiles(files, count, splice)
+        files, files_txt = spliceFiles(files, splice, skip, count)
 
         return (files_txt,)
 
